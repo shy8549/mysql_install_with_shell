@@ -14,12 +14,11 @@ user=${MYSQL_USER}
 datadir=${MYSQL_DATA_DIR}
 ## 设置MySQL字符集为UTF-8MB4，支持更广泛的字符集
 character-set-server=UTF8MB4  
+collation-server=utf8mb4_0900_ai_ci
 ## 设置默认时区为东八区
 default-time-zone='+08:00'  
 ## 大小写不敏感
-lower_case_table_names=1   
-## 设置 client 连接 mysql 时的字符集, 防止乱码
-init_connect='SET NAMES utf8mb4'   
+lower_case_table_names=1     
 
 # 日志设置
 ## 开启慢查询日志，记录执行时间超过long_query_time的查询  
@@ -36,8 +35,6 @@ log_slow_admin_statements=1
 log_error=${MYSQL_LOG_DIR}/errorlog/${hostname}-error-${current_date}.log  
 
 # binlog设置
-## 开启binlog,8.0版本默认开启
-log_bin=on
 ## 设置二进制日志文件，用于主从复制和恢复
 log_bin=${MYSQL_LOG_DIR}/binlog/${hostname}-binlog
 ## 设置二进制日志索引文件  
@@ -62,7 +59,9 @@ relay_log_index=${MYSQL_LOG_DIR}/relaylog/${hostname}-relaylog-bin.index
 ## 启用中继日志自动清理，避免日志文件过多  
 relay_log_purge=1
 ## 主从数据同步的线程数，建议根据CPU核心数设置,8.0.27前默认是0，之后默认是4
-replica_parallel_workers=4
+replica_parallel_workers=16
+replica_parallel_type = LOGICAL_CLOCK
+replica_preserve_commit_order = ON
 
 ## 开启GTID（全局事务标识符）模式，简化主从复制管理  
 gtid_mode=on
@@ -77,25 +76,25 @@ auto_increment_offset=1
 
 # 连接和缓存配置
 ## 设置最大连接错误次数，超过此值会阻止连接
-max_connect_errors=10000
+max_connect_errors=5000
 ## 设置最大连接数为1000，建议根据应用需求调整  
-max_connections=1000
+max_connections=800
 ## 设置连接缓冲区大小为8MB，建议根据查询复杂度调整  
-join_buffer_size=8M
+join_buffer_size=1M
 ## 设置MyISAM索引缓冲区大小为256MB，建议根据MyISAM表大小调整  
 key_buffer_size=256M
 ## 设置批量插入缓冲区大小为96MB，建议根据批量插入数据量调整  
-bulk_insert_buffer_size=96M
+bulk_insert_buffer_size=16M
 ## 设置临时表大小为96MB，建议根据查询复杂度调整  
-tmp_table_size=96M
+tmp_table_size=64M
 ## 设置读缓冲区大小为8MB，建议根据查询复杂度调整  
-read_buffer_size=8M
+read_buffer_size=1M
 ## 设置排序缓冲区大小为2MB，建议根据排序数据量调整  
 sort_buffer_size=2M
 ## 设置最大允许的数据包大小为64MB，建议根据应用需求调整  
 max_allowed_packet=64M
 ## 设置随机读缓冲区大小为32MB，建议根据查询复杂度调整  
-read_rnd_buffer_size=32M  
+read_rnd_buffer_size=4M  
 
 # InnoDB配置
 ## 设置InnoDB日志提交方式，2表示每次事务提交时将日志缓冲区的数据写入文件系统缓存，每秒由操作系统调度刷盘一次。
@@ -105,9 +104,9 @@ sync_binlog=100
 ## 设置InnoDB数据文件路径及大小，自动扩展至最大500G  
 innodb_data_file_path=ibdata1:2G:autoextend:max:500G
 ## 设置InnoDB缓冲池大小为系统内存的一半
-innodb_buffer_pool_size=64G
+innodb_buffer_pool_size=120G
 ## 设置InnoDB缓冲池实例数为8，建议根据CPU核心数设置  
-innodb_buffer_pool_instances=8
+innodb_buffer_pool_instances=16
 ## 设置InnoDB页面清理线程数为8，建议根据CPU核心数设置  
 innodb_page_cleaners=8
 ## 设置InnoDB重做日志容量为5GB，建议根据事务量调整  
@@ -128,11 +127,12 @@ innodb_io_capacity_max=2000
 innodb_read_io_threads=16
 ## 设置InnoDB写I/O线程数为16，建议根据CPU核心数设置  
 innodb_write_io_threads=16
-## 设置InnoDB线程并发控制为128，建议根据CPU核心数调整  
-innodb_thread_concurrency=128
+## 设置InnoDB线程并发控制为128，建议根据CPU核心数调整，8.4.7LTS建议0
+innodb_thread_concurrency=0
 ## 设置InnoDB锁等待超时时间为900秒，避免长时间锁等待  
 innodb_lock_wait_timeout=900
 ## 设置InnoDB最大脏页百分比为95%，建议根据内存大小调整  
-innodb_max_dirty_pages_pct=95
+innodb_max_dirty_pages_pct=75
 ## 设置InnoDB允许打开的最大文件数为50000，建议根据表数量调整  
 innodb_open_files=50000
+sql_mode="STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO"
