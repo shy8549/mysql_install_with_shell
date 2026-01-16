@@ -14,7 +14,6 @@ CONF_DIR="${SCRIPT_DIR}/../conf"
 CONF_FILE="${CONF_DIR}/mysql_install.conf"
 
 [[ -f "$CONF_FILE" ]] || { echo "ERROR: config not found: $CONF_FILE" >&2; exit 1; }
-# shellcheck source=/dev/null
 source "$CONF_FILE"
 
 ############################################
@@ -43,7 +42,7 @@ MYSQL_CNF="${MYSQL_CONF_DIR}/my.cnf"
 MYSQL_SOCKET="${MYSQL_CONF_DIR}/mysql.sock"
 MYSQL_PIDFILE="${MYSQL_CONF_DIR}/mysqld.pid"
 MYSQL_SERVER_SCRIPT="${INSTALL_HOME_DIR}/bin/mysql.server"
-LOCK_DIR="${MYSQL_CONF_DIR}/lock"
+MYSQL_SERVER_SRC="${SCRIPT_DIR}/mysql.server"
 TMP_DIR="${MYSQL_CONF_DIR}/tmp"
 
 ############################################
@@ -86,28 +85,32 @@ prepare_dirs() {
   log INFO "Preparing directories..."
 
   mkdir -p \
-    "$INSTALL_HOME_DIR" \
-    "$MYSQL_CONF_DIR" \
-    "$LOCK_DIR" \
-    "$TMP_DIR" \
+    "$INSTALL_HOME_DIR"/{bin,conf,data,logs} \
+    "$MYSQL_CONF_DIR"/{lock,tmp} \
     "$MYSQL_LOG_DIR"/{errorlog,binlog,relaylog} \
     "$MYSQL_DATA_DIR"
 
   chown -R "$MYSQL_USER:$MYSQL_GROUP" "$INSTALL_HOME_DIR"
-  chmod 755 "$INSTALL_HOME_DIR"
+  chmod -R 755 "$INSTALL_HOME_DIR"
 }
 
 ############################################
-# Extract MySQL base
+# Extract MySQL base (upgrade-safe)
 ############################################
 install_mysql_base() {
   log INFO "Extracting MySQL tarball..."
+
+  [[ -f "$MYSQL_TAR" ]] || { log ERROR "MySQL tar not found: $MYSQL_TAR"; exit 1; }
 
   rm -rf "$INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
   tar -xf "$MYSQL_TAR" -C "$INSTALL_DIR" --strip-components=1
 
-  [[ -x "$INSTALL_DIR/bin/mysqld" ]] || { log ERROR "mysqld not found"; exit 1; }
+  [[ -x "$INSTALL_DIR/bin/mysqld" ]] || {
+    log ERROR "mysqld not found after extract"
+    exit 1
+  }
+
   chown -R "$MYSQL_USER:$MYSQL_GROUP" "$INSTALL_DIR"
 }
 
@@ -137,57 +140,36 @@ generate_mycnf() {
 }
 
 ############################################
-# Initialize MySQL
+# Initialize MySQL (only first time)
 ############################################
 initialize_mysql() {
   log INFO "Initializing MySQL data directory..."
 
-  [[ -d "$MYSQL_DATA_DIR/mysql" ]] && {
+  if [[ -d "$MYSQL_DATA_DIR/mysql" ]]; then
     log INFO "Data directory already initialized, skip"
     return
-  }
+  fi
 
   chown -R "$MYSQL_USER:$MYSQL_GROUP" "$MYSQL_DATA_DIR"
+
   su - "$MYSQL_USER" -c \
     "$INSTALL_DIR/bin/mysqld --defaults-file=$MYSQL_CNF --initialize" >>"$LOG_FILE" 2>&1
 }
 
 ############################################
-# mysql.server
+# Install mysql.server (copy only)
 ############################################
-generate_mysql_server() {
-  log INFO "Generating mysql.server script..."
+install_mysql_server() {
+  log INFO "Installing mysql.server..."
 
-  cat > "$MYSQL_SERVER_SCRIPT" <<EOF
-#!/bin/bash
-basedir="$INSTALL_DIR"
-conf="$MYSQL_CNF"
-user="$MYSQL_USER"
-pid="$MYSQL_PIDFILE"
-sock="$MYSQL_SOCKET"
+  [[ -f "$MYSQL_SERVER_SRC" ]] || {
+    log ERROR "mysql.server not found in script dir"
+    exit 1
+  }
 
-start() {
-  su - "\$user" -c "\$basedir/bin/mysqld_safe --defaults-file=\$conf >/dev/null 2>&1 &"
-  sleep 2
-  echo "MySQL started"
-}
-
-stop() {
-  "\$basedir/bin/mysqladmin" --socket="\$sock" -uroot shutdown >/dev/null 2>&1 || true
-}
-
-status() {
-  [[ -f "\$pid" ]] && echo "MySQL running" || echo "MySQL stopped"
-}
-
-case "\$1" in
-  start|stop|status) "\$1" ;;
-  restart) stop; start ;;
-  *) echo "Usage: \$0 {start|stop|restart|status}" ;;
-esac
-EOF
-
+  cp "$MYSQL_SERVER_SRC" "$MYSQL_SERVER_SCRIPT"
   chmod 755 "$MYSQL_SERVER_SCRIPT"
+  chown root:root "$MYSQL_SERVER_SCRIPT"
 }
 
 ############################################
@@ -196,7 +178,6 @@ EOF
 start_mysql() {
   log INFO "Starting MySQL..."
   "$MYSQL_SERVER_SCRIPT" start >>"$LOG_FILE" 2>&1
-  sleep 3
 }
 
 ############################################
@@ -206,7 +187,6 @@ secure_mysql() {
   log INFO "Configuring root and replication user..."
 
   mkdir -p "$TMP_DIR"
-
   local sql_file errlog init_pwd
   sql_file="$(mktemp "$TMP_DIR/secure.XXXX.sql")"
 
@@ -221,11 +201,11 @@ SQL
   init_pwd="$(grep -m1 'temporary password' "$errlog" | awk '{print $NF}' || true)"
 
   if [[ -n "$init_pwd" ]]; then
-    log INFO "Detected temporary root password, applying secure SQL..."
+    log INFO "Detected temporary root password"
     "$INSTALL_DIR/bin/mysql" --connect-expired-password \
       -uroot -p"$init_pwd" -S "$MYSQL_SOCKET" < "$sql_file" >>"$LOG_FILE" 2>&1
   else
-    log INFO "Root password already set, ensuring repl user..."
+    log INFO "Root password already set"
     "$INSTALL_DIR/bin/mysql" -uroot -p"$MYSQL_ROOT_PASSWORD" \
       -S "$MYSQL_SOCKET" < "$sql_file" >>"$LOG_FILE" 2>&1 || true
   fi
@@ -242,7 +222,7 @@ prepare_dirs
 install_mysql_base
 generate_mycnf
 initialize_mysql
-generate_mysql_server
+install_mysql_server
 start_mysql
 secure_mysql
 
