@@ -51,7 +51,7 @@ binlog_expire_logs_seconds=604800
 
 # 复制相关配置
 ## MySQL服务器ID，用于主从复制，通常取IP的末位或其他唯一标识，如果不同网段需要手动调整
-server_id=${MYSQL_SERVER_ID}
+server-id=${MYSQL_SERVER_ID}
 ## 设置中继日志文件位置  
 relay_log=${MYSQL_LOG_DIR}/relaylog/${hostname}-relaylog-bin
 ## 设置中继日志索引文件位置  
